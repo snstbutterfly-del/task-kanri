@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>タスク管理</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Meiryo', 'メイリオ', sans-serif; background: #f0f2f5; color: #333; font-size: 13px; }
+
+  header {
+    background: linear-gradient(135deg, #1a3a5c 0%, #2563a8 100%);
+    color: white; padding: 14px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  }
+  header h1 { font-size: 18px; font-weight: bold; letter-spacing: 1px; }
+  header .stats { font-size: 12px; opacity: 0.85; display: flex; gap: 16px; }
+  .stat-item { display: flex; align-items: center; gap: 4px; }
+
+  /* ===== TOOLBAR ===== */
+  .toolbar {
+    background: white; padding: 10px 20px;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    border-bottom: 1px solid #e0e0e0;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
+  .toolbar select, .toolbar input[type="text"] {
+    border: 1px solid #ccc; border-radius: 6px;
+    padding: 5px 10px; font-size: 12px; font-family: inherit;
+    background: #fafafa; height: 32px;
+  }
+  .toolbar select:focus, .toolbar input:focus { outline: none; border-color: #2563a8; background: white; }
+  .toolbar label { font-size: 12px; color: #666; }
+
+  .filter-toggle-btn {
+    display: none;
+    width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 6px;
+    background: #fafafa; font-size: 13px; font-family: inherit; cursor: pointer;
+    text-align: left; color: #444;
+  }
+  .filter-panel { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+  .btn {
+    padding: 5px 14px; border-radius: 6px; border: none; cursor: pointer;
+    font-size: 12px; font-family: inherit; height: 32px;
+    display: inline-flex; align-items: center; gap: 5px;
+    transition: all 0.15s;
+  }
+  .btn-primary   { background: #2563a8; color: white; }
+  .btn-primary:hover   { background: #1a4a8a; }
+  .btn-success   { background: #16a34a; color: white; }
+  .btn-success:hover   { background: #15803d; }
+  .btn-danger    { background: #dc2626; color: white; }
+  .btn-danger:hover    { background: #b91c1c; }
+  .btn-secondary { background: #e5e7eb; color: #444; }
+  .btn-secondary:hover { background: #d1d5db; }
+  .spacer { flex: 1; }
+
+  /* ===== TABLE (PC) ===== */
+  .table-wrap { padding: 16px 20px; overflow-x: auto; }
+  table {
+    width: 100%; border-collapse: collapse;
+    background: white; border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    overflow: hidden; table-layout: fixed;
+  }
+  colgroup col:nth-child(1) { width: 44px; }
+  colgroup col:nth-child(2) { width: 100px; }
+  colgroup col:nth-child(3) { width: 90px; }
+  colgroup col:nth-child(4) { width: auto; }
+  colgroup col:nth-child(5) { width: 62px; }
+  colgroup col:nth-child(6) { width: 78px; }
+  colgroup col:nth-child(7) { width: 160px; }
+  colgroup col:nth-child(8) { width: 40px; }
+
+  thead th {
+    background: #1a3a5c; color: white;
+    padding: 10px 8px; text-align: center;
+    font-size: 12px; font-weight: bold;
+    user-select: none; cursor: pointer; white-space: nowrap;
+  }
+  thead th:hover { background: #2563a8; }
+  thead th.sort-asc::after  { content: ' ▲'; font-size: 10px; }
+  thead th.sort-desc::after { content: ' ▼'; font-size: 10px; }
+  thead th.no-sort { cursor: default; }
+  thead th.no-sort:hover { background: #1a3a5c; }
+
+  tbody tr { border-bottom: 1px solid #e8e8e8; transition: background 0.1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:not(.done-row):hover { filter: brightness(0.97); }
+
+  td { padding: 7px 8px; vertical-align: middle; }
+  td input, td select, td textarea {
+    width: 100%; border: none; background: transparent;
+    font-family: inherit; font-size: 13px; color: inherit;
+    outline: none; cursor: pointer;
+  }
+  td input:focus, td select:focus, td textarea:focus {
+    background: rgba(255,255,255,0.7); border-radius: 4px;
+    outline: 2px solid #2563a8; cursor: text;
+  }
+  td select { cursor: pointer; }
+  td textarea { resize: none; overflow: hidden; min-height: 22px; line-height: 1.4; }
+
+  .cell-no     { text-align: center; color: #888; font-size: 12px; }
+  .cell-date   { text-align: center; }
+  .cell-cat, .cell-pri, .cell-status { text-align: center; }
+  .cell-actions { text-align: center; white-space: nowrap; }
+
+  /* 期日表示 */
+  .date-display {
+    font-size: 13px; font-weight: bold; cursor: pointer;
+    padding: 3px 6px; border-radius: 6px; display: inline-block;
+    line-height: 1.4; white-space: nowrap;
+  }
+  .date-display:hover { filter: brightness(0.93); }
+  .date-none    { color: #bbb; font-size: 12px; font-weight: normal; }
+  .date-overdue { background: #fee2e2; color: #b91c1c; }
+  .date-soon    { background: #fef3c7; color: #92400e; }
+  .date-normal  { background: #f1f5f9; color: #334155; }
+  .date-ok      { background: #f0fdf4; color: #166534; }
+
+  /* 隠し date input オーバーレイ */
+  .date-input-wrap { position: relative; display: inline-block; }
+  .date-input-wrap input[type="date"] {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    opacity: 0; cursor: pointer; z-index: 2;
+  }
+
+  .btn-del {
+    background: none; border: none; cursor: pointer;
+    color: #ccc; font-size: 16px; padding: 2px 6px;
+    border-radius: 4px; line-height: 1; transition: all 0.15s;
+  }
+  .btn-del:hover { color: #dc2626; background: #fee2e2; }
+
+  .empty-row td { text-align: center; color: #aaa; padding: 40px; font-size: 14px; }
+
+  /* ===== BADGES ===== */
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 12px;
+    font-size: 11px; font-weight: bold; white-space: nowrap;
+  }
+  .cat-seikyo  { background: #d1fae5; color: #065f46; }
+  .cat-zatsu   { background: #fef9c3; color: #713f12; }
+  .cat-seizo   { background: #fee2e2; color: #7f1d1d; }
+  .cat-zaiko   { background: #dbeafe; color: #1e3a8a; }
+  .cat-ja      { background: #ede9fe; color: #4c1d95; }
+  .cat-kikaku  { background: #fce7f3; color: #831843; }
+  .cat-yoshi   { background: #fff7ed; color: #7c2d12; border: 1px solid #fed7aa; }
+
+  .pri-high { background: #fecaca; color: #991b1b; }
+  .pri-mid  { background: #fed7aa; color: #7c2d12; }
+  .pri-low  { background: #e5e7eb; color: #374151; }
+
+  .status-todo  { background: #e0e7ff; color: #3730a3; }
+  .status-doing { background: #fef3c7; color: #78350f; }
+  .status-done  { background: #d1fae5; color: #065f46; }
+
+  /* ===== 完了行 ===== */
+  tr.done-row {
+    background: linear-gradient(90deg, #f0fdf4 0%, #f8fffe 100%);
+    border-left: 4px solid #22c55e;
+  }
+  tr.done-row td { color: #9ca3af; }
+  tr.done-row td input,
+  tr.done-row td textarea { text-decoration: line-through; color: #9ca3af; }
+  tr.done-row .done-content { text-decoration: line-through; color: #9ca3af; }
+  tr.done-row .date-display { opacity: 0.5; }
+  tr.done-row .done-check { color: #22c55e; font-size: 16px; margin-right: 4px; }
+
+  tr.overdue { }
+  .overdue-mark { color: #dc2626; font-size: 11px; display: block; }
+
+  /* ===== PROGRESS ===== */
+  .progress-bar { height: 5px; background: #e5e7eb; border-radius: 2px; margin: 0; overflow: hidden; }
+  .progress-fill {
+    height: 100%; background: linear-gradient(90deg, #16a34a, #22c55e);
+    border-radius: 2px; transition: width 0.4s;
+  }
+
+  .filter-active { border-color: #2563a8 !important; background: #eff6ff !important; }
+
+  /* ===== MODAL ===== */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.4); z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: white; border-radius: 12px; padding: 28px;
+    width: 420px; max-width: 95vw;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    max-height: 90vh; overflow-y: auto;
+  }
+  .modal h2 { margin-bottom: 20px; font-size: 16px; color: #1a3a5c; }
+  .form-row { margin-bottom: 14px; }
+  .form-row label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; font-weight: bold; }
+  .form-row input, .form-row select, .form-row textarea {
+    width: 100%; border: 1px solid #ccc; border-radius: 6px;
+    padding: 7px 10px; font-size: 13px; font-family: inherit;
+    transition: border-color 0.15s;
+  }
+  .form-row input:focus, .form-row select:focus, .form-row textarea:focus {
+    outline: none; border-color: #2563a8;
+  }
+  .form-row textarea { min-height: 60px; resize: vertical; }
+  .form-row-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+
+  /* ===== CARD VIEW (スマホ) ===== */
+  .card-list { display: none; padding: 12px; gap: 10px; flex-direction: column; }
+
+  .task-card {
+    background: white; border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    border-left: 4px solid #2563a8;
+    position: relative;
+  }
+  .task-card.pri-high-card { border-left-color: #dc2626; }
+  .task-card.pri-mid-card  { border-left-color: #f59e0b; }
+  .task-card.pri-low-card  { border-left-color: #9ca3af; }
+  .task-card.done-card {
+    background: linear-gradient(90deg, #f0fdf4, #fafff9);
+    border-left-color: #22c55e; opacity: 0.82;
+  }
+  .task-card.overdue-card { border-left-color: #dc2626; }
+
+  .card-header { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+  .card-content { font-size: 14px; font-weight: bold; flex: 1; line-height: 1.4; cursor: pointer; }
+  .card-content.done-text { text-decoration: line-through; color: #9ca3af; }
+
+  .card-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; align-items: center; }
+  .card-date { font-size: 12px; }
+  .card-date.overdue { color: #dc2626; font-weight: bold; }
+
+  .card-note { font-size: 12px; color: #666; margin-top: 6px; white-space: pre-wrap; }
+
+  .card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+  .card-status-btn {
+    border: none; border-radius: 20px; padding: 5px 14px;
+    font-size: 12px; font-weight: bold; cursor: pointer;
+    font-family: inherit; transition: all 0.15s;
+  }
+  .card-del-btn {
+    background: none; border: none; color: #ccc; font-size: 20px;
+    cursor: pointer; padding: 0; border-radius: 6px;
+    line-height: 1; transition: all 0.15s;
+    min-width: 44px; min-height: 44px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .card-del-btn:hover { color: #dc2626; background: #fee2e2; }
+
+  .fab {
+    display: none;
+    position: fixed; bottom: 24px; right: 20px;
+    width: 56px; height: 56px; border-radius: 50%;
+    background: #2563a8; color: white;
+    font-size: 28px; border: none; cursor: pointer;
+    box-shadow: 0 4px 16px rgba(37,99,168,0.5);
+    align-items: center; justify-content: center;
+    z-index: 50; transition: all 0.15s;
+  }
+  .fab:hover { background: #1a4a8a; transform: scale(1.08); }
+
+  .card-empty {
+    text-align: center; color: #aaa; padding: 40px 20px;
+    font-size: 14px; background: white; border-radius: 12px;
+  }
+
+  /* ===== MEDIA QUERY ===== */
+  @media (max-width: 768px) {
+    header { padding: 10px 14px; }
+    header h1 { font-size: 16px; }
+    .toolbar { padding: 10px 14px; flex-direction: column; align-items: stretch; gap: 8px; }
+    .toolbar .btn-primary { display: none; }
+    .filter-toggle-btn { display: block; }
+    .filter-panel { display: none; flex-direction: column; }
+    .filter-panel.open { display: flex; }
+    .filter-panel select, .filter-panel input[type="text"] { width: 100%; height: 40px; font-size: 13px; }
+    .toolbar .spacer, .toolbar > label { display: none; }
+    .toolbar .btn-secondary { width: 100%; justify-content: center; height: 40px; }
+    .table-wrap { display: none; }
+    .card-list { display: flex; }
+    .fab { display: flex; }
+    .modal-overlay { align-items: flex-end; }
+    .modal { width: 100%; max-width: 100%; border-radius: 20px 20px 0 0; padding: 24px 20px 32px; max-height: 92vh; }
+    .form-row-grid { grid-template-columns: 1fr 1fr; }
+    .form-row input, .form-row select, .form-row textarea { font-size: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📋 タスク管理</h1>
+  <div class="stats">
+    <div class="stat-item">全 <strong id="stat-total">0</strong> 件</div>
+    <div class="stat-item">未着手 <strong id="stat-todo">0</strong></div>
+    <div class="stat-item">進行中 <strong id="stat-doing">0</strong></div>
+    <div class="stat-item">✅ 完了 <strong id="stat-done">0</strong></div>
+  </div>
+</header>
+
+<div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+
+<div class="toolbar">
+  <button class="btn btn-primary" onclick="openModal()">＋ 新規追加</button>
+  <button class="filter-toggle-btn" onclick="toggleFilter()">🔍 絞り込み・検索</button>
+
+  <div class="filter-panel" id="filter-panel">
+    <label>カテゴリ</label>
+    <select id="filter-cat" onchange="render()">
+      <option value="">すべて</option>
+      <option value="生協関連">生協関連</option>
+      <option value="JA">JA</option>
+      <option value="企画書">企画書</option>
+      <option value="ヨシケイ">ヨシケイ</option>
+      <option value="製造関連">製造関連</option>
+      <option value="在庫関連">在庫関連</option>
+      <option value="雑務">雑務</option>
+    </select>
+    <label>ステータス</label>
+    <select id="filter-status" onchange="render()">
+      <option value="">すべて</option>
+      <option value="未着手">未着手</option>
+      <option value="進行中">進行中</option>
+      <option value="完了">完了</option>
+    </select>
+    <input type="text" id="filter-text" placeholder="🔍 キーワード検索..." oninput="render()" style="width:160px">
+    <div class="spacer"></div>
+    <label><input type="checkbox" id="hide-done" onchange="render()"> 完了を隠す</label>
+    <button class="btn btn-secondary" onclick="exportCSV()">CSV出力</button>
+  </div>
+</div>
+
+<!-- データ移行バナー（file://で開いた時だけ表示） -->
+<div id="migrate-banner" style="display:none;background:#fef3c7;border-bottom:2px solid #f59e0b;padding:10px 20px;align-items:center;gap:12px;flex-wrap:wrap;">
+  <span style="font-size:13px;">⚠️ このデータをサーバー版に移行すると、スマホからもアクセスできます。</span>
+  <button onclick="migrateToServer()" style="background:#f59e0b;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:bold;">📤 サーバーに移行する</button>
+</div>
+
+<!-- PC: テーブル表示 -->
+<div class="table-wrap">
+<table>
+  <colgroup><col><col><col><col><col><col><col><col></colgroup>
+  <thead>
+    <tr>
+      <th class="no-sort">No.</th>
+      <th data-sort="dueDate">期日</th>
+      <th class="no-sort">カテゴリ</th>
+      <th data-sort="content">内容</th>
+      <th class="no-sort">優先度</th>
+      <th class="no-sort">ステータス</th>
+      <th class="no-sort">備考</th>
+      <th class="no-sort"></th>
+    </tr>
+  </thead>
+  <tbody id="tbody"></tbody>
+</table>
+</div>
+
+<!-- スマホ: カード表示 -->
+<div class="card-list" id="card-list"></div>
+
+<button class="fab" onclick="openModal()" title="タスクを追加">＋</button>
+
+<!-- 追加・編集モーダル -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2 id="modal-title">📝 タスクを追加</h2>
+    <div class="form-row">
+      <label>内容 *</label>
+      <input type="text" id="f-content" placeholder="タスクの内容を入力">
+    </div>
+    <div class="form-row-grid">
+      <div class="form-row">
+        <label>期日</label>
+        <input type="date" id="f-date">
+      </div>
+      <div class="form-row">
+        <label>カテゴリ</label>
+        <select id="f-cat">
+          <option value="">未分類</option>
+          <option value="生協関連">生協関連</option>
+          <option value="JA">JA</option>
+          <option value="企画書">企画書</option>
+          <option value="ヨシケイ">ヨシケイ</option>
+          <option value="製造関連">製造関連</option>
+          <option value="在庫関連">在庫関連</option>
+          <option value="雑務">雑務</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>優先度</label>
+        <select id="f-pri">
+          <option value="中">中</option>
+          <option value="高">高</option>
+          <option value="低">低</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row" id="f-status-row" style="display:none">
+      <label>ステータス</label>
+      <select id="f-status">
+        <option value="未着手">未着手</option>
+        <option value="進行中">進行中</option>
+        <option value="完了">完了</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label>備考</label>
+      <textarea id="f-note" placeholder="メモなど"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">キャンセル</button>
+      <button class="btn btn-success" id="modal-save-btn" onclick="saveTask()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Firebase Realtime Database（PCなしでもどこからでもアクセス可能）
+const FIREBASE_URL = 'https://task-kanri-92960-default-rtdb.firebaseio.com/tasks.json';
+const SERVER_MODE = true; // 常にFirebaseを使用
+const STORAGE_KEY = 'tasks_v1';
+let tasks = [];
+let sortCol = 'dueDate';
+let sortDir = 1;
+let editingId = null;
+let saveTimer = null;
+
+const CATEGORIES = ['生協関連','JA','企画書','ヨシケイ','製造関連','在庫関連','雑務'];
+const CAT_CLASS = {
+  '生協関連': 'cat-seikyo',
+  '雑務':     'cat-zatsu',
+  '製造関連': 'cat-seizo',
+  '在庫関連': 'cat-zaiko',
+  'JA':       'cat-ja',
+  '企画書':   'cat-kikaku',
+  'ヨシケイ': 'cat-yoshi',
+};
+const PRI_CLASS = { '高':'pri-high', '中':'pri-mid', '低':'pri-low' };
+const STA_CLASS = { '未着手':'status-todo', '進行中':'status-doing', '完了':'status-done' };
+const STA_CYCLE = ['未着手','進行中','完了'];
+const WEEKDAY   = ['日','月','火','水','木','金','土'];
+
+async function load() {
+  try {
+    const res = await fetch(FIREBASE_URL);
+    const data = await res.json();
+    // Firebaseはオブジェクト or 配列 or null を返す
+    if (Array.isArray(data)) {
+      tasks = data.filter(Boolean);
+    } else if (data && typeof data === 'object') {
+      tasks = Object.values(data).filter(Boolean);
+    } else {
+      tasks = [];
+    }
+  } catch { tasks = []; }
+
+  // Firebaseが空 → localStorageから移行
+  if (!tasks.length) {
+    try {
+      const local = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+      if (local.length) {
+        tasks = local;
+        await saveToFirebase();
+        console.log('localStorageからFirebaseへ移行完了:', tasks.length, '件');
+      }
+    } catch {}
+  }
+  if (!tasks.length) tasks = sampleData();
+}
+
+async function saveToFirebase() {
+  await fetch(FIREBASE_URL, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(tasks),
+  });
+}
+
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveToFirebase().catch(() => {});
+  }, 300);
+}
+
+function sampleData() {
+  const today = new Date();
+  const d = (offset) => {
+    const dt = new Date(today); dt.setDate(dt.getDate() + offset);
+    return dt.toISOString().slice(0,10);
+  };
+  return [
+    { id: uid(), dueDate: d(1),  category:'生協関連', content:'月次発注リストの確認・提出', priority:'高', status:'未着手', note:'担当者に要確認' },
+    { id: uid(), dueDate: d(-2), category:'在庫関連', content:'倉庫の棚卸し作業',           priority:'高', status:'進行中', note:'午後から実施' },
+    { id: uid(), dueDate: d(7),  category:'製造関連', content:'製造ラインの定期メンテナンス', priority:'中', status:'未着手', note:'A棟・B棟' },
+    { id: uid(), dueDate: d(-5), category:'雑務',     content:'消耗品の補充注文',           priority:'低', status:'完了',   note:'ペーパー類など' },
+    { id: uid(), dueDate: d(3),  category:'JA',       content:'JA担当者との打ち合わせ',     priority:'高', status:'未着手', note:'' },
+    { id: uid(), dueDate: d(5),  category:'企画書',   content:'秋冬特集企画書の作成',       priority:'中', status:'進行中', note:'' },
+    { id: uid(), dueDate: d(10), category:'ヨシケイ', content:'ヨシケイ向け商品提案資料',   priority:'低', status:'未着手', note:'' },
+  ];
+}
+
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+/* 期日表示テキストとCSSクラスを返す */
+function dateInfo(dateStr, isDone) {
+  if (!dateStr) return { text: '−', cls: 'date-none' };
+  const today = new Date(); today.setHours(0,0,0,0);
+  const due   = new Date(dateStr); due.setHours(0,0,0,0);
+  const diff  = Math.round((due - today) / 86400000);
+  const [y,m,d] = dateStr.split('-');
+  const wday  = WEEKDAY[due.getDay()];
+  const label = `${parseInt(m)}/${parseInt(d)}(${wday})`;
+
+  if (isDone) return { text: label, cls: 'date-ok' };
+  if (diff < 0)  return { text: label + ` ⚠+${-diff}日`, cls: 'date-overdue' };
+  if (diff === 0) return { text: '今日 ' + label, cls: 'date-overdue' };
+  if (diff <= 3)  return { text: label + ` あと${diff}日`, cls: 'date-soon' };
+  return { text: label, cls: 'date-normal' };
+}
+
+function getFiltered() {
+  const filterCat    = document.getElementById('filter-cat').value;
+  const filterStatus = document.getElementById('filter-status').value;
+  const filterText   = document.getElementById('filter-text').value.trim().toLowerCase();
+  const hideDone     = document.getElementById('hide-done').checked;
+
+  let filtered = tasks.filter(t => {
+    if (filterCat    && t.category !== filterCat)    return false;
+    if (filterStatus && t.status   !== filterStatus) return false;
+    if (hideDone     && t.status   === '完了')        return false;
+    if (filterText && !(
+      (t.content||'').toLowerCase().includes(filterText) ||
+      (t.note||'').toLowerCase().includes(filterText) ||
+      (t.category||'').includes(filterText)
+    )) return false;
+    return true;
+  });
+
+  filtered.sort((a, b) => {
+    let va = a[sortCol] || '', vb = b[sortCol] || '';
+    if (va < vb) return -sortDir;
+    if (va > vb) return  sortDir;
+    return 0;
+  });
+  return filtered;
+}
+
+function render() {
+  const filtered = getFiltered();
+
+  // ===== テーブル描画（PC） =====
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="8">タスクがありません</td></tr>';
+  } else {
+    filtered.forEach((t, i) => {
+      const isDone  = t.status === '完了';
+      const di      = dateInfo(t.dueDate, isDone);
+      const catCls  = CAT_CLASS[t.category] || '';
+      const priCls  = PRI_CLASS[t.priority] || '';
+      const staCls  = STA_CLASS[t.status]   || '';
+      const tr = document.createElement('tr');
+      if (isDone) tr.classList.add('done-row');
+
+      tr.innerHTML = `
+        <td class="cell-no">${isDone ? '✅' : i+1}</td>
+        <td class="cell-date">
+          <div class="date-input-wrap">
+            <span class="date-display ${di.cls}">${di.text}</span>
+            <input type="date" value="${t.dueDate||''}"
+              onchange="update('${t.id}','dueDate',this.value); render();"
+              title="クリックして日付を変更">
+          </div>
+        </td>
+        <td class="cell-cat">
+          <select onchange="update('${t.id}','category',this.value)">
+            <option value="">−</option>
+            ${CATEGORIES.map(c=>`<option${t.category===c?' selected':''}>${c}</option>`).join('')}
+          </select>
+          ${t.category ? `<span class="badge ${catCls}" style="margin-top:2px;display:block">${t.category}</span>` : ''}
+        </td>
+        <td>
+          <span class="done-check">${isDone ? '✓ ' : ''}</span><textarea rows="1"
+            onchange="update('${t.id}','content',this.value)"
+            oninput="autoResize(this)" class="done-content">${esc(t.content||'')}</textarea>
+        </td>
+        <td class="cell-pri">
+          <select onchange="update('${t.id}','priority',this.value)">
+            ${['高','中','低'].map(p=>`<option${t.priority===p?' selected':''}>${p}</option>`).join('')}
+          </select>
+        </td>
+        <td class="cell-status">
+          <select onchange="update('${t.id}','status',this.value)">
+            ${['未着手','進行中','完了'].map(s=>`<option${t.status===s?' selected':''}>${s}</option>`).join('')}
+          </select>
+        </td>
+        <td>
+          <textarea rows="1" onchange="update('${t.id}','note',this.value)"
+            oninput="autoResize(this)">${esc(t.note||'')}</textarea>
+        </td>
+        <td class="cell-actions">
+          <button class="btn-del" onclick="deleteTask('${t.id}')" title="削除">×</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  // ===== カード描画（スマホ） =====
+  const cardList = document.getElementById('card-list');
+  cardList.innerHTML = '';
+  if (!filtered.length) {
+    cardList.innerHTML = '<div class="card-empty">タスクがありません</div>';
+  } else {
+    filtered.forEach(t => {
+      const isDone   = t.status === '完了';
+      const isOverdue = !isDone && t.dueDate && t.dueDate < new Date().toISOString().slice(0,10);
+      const di       = dateInfo(t.dueDate, isDone);
+      const staCls   = STA_CLASS[t.status]   || '';
+      const catCls   = CAT_CLASS[t.category] || '';
+
+      const priCardCls = !isDone && !isOverdue
+        ? (t.priority === '高' ? ' pri-high-card' : t.priority === '低' ? ' pri-low-card' : ' pri-mid-card')
+        : '';
+      const card = document.createElement('div');
+      card.className = 'task-card' + (isDone ? ' done-card' : '') + (isOverdue ? ' overdue-card' : '') + priCardCls;
+      card.innerHTML = `
+        <div class="card-header">
+          <div class="card-content${isDone ? ' done-text' : ''}"
+               onclick="openEditModal('${t.id}')">${isDone ? '✅ ' : ''}${esc(t.content||'')}</div>
+        </div>
+        <div class="card-meta">
+          ${t.category ? `<span class="badge ${catCls}">${t.category}</span>` : ''}
+          ${t.priority ? `<span class="badge ${PRI_CLASS[t.priority]||''}">${t.priority}</span>` : ''}
+          ${t.dueDate  ? `<span class="date-display ${di.cls}" style="font-size:12px;padding:2px 7px">${di.text}</span>` : ''}
+        </div>
+        ${t.note ? `<div class="card-note">📝 ${esc(t.note)}</div>` : ''}
+        <div class="card-footer">
+          <button class="card-status-btn badge ${staCls}" onclick="cycleStatus('${t.id}')">${t.status} ▶</button>
+          <button class="card-del-btn" onclick="deleteTask('${t.id}')">×</button>
+        </div>`;
+      cardList.appendChild(card);
+    });
+  }
+
+  updateStats();
+  updateSortHeaders();
+}
+
+function autoResize(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
+function esc(s) { return (s+'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function update(id, field, value) {
+  const t = tasks.find(t => t.id === id);
+  if (t) { t[field] = value; save(); render(); }
+}
+
+function cycleStatus(id) {
+  const t = tasks.find(t => t.id === id);
+  if (!t) return;
+  const idx = STA_CYCLE.indexOf(t.status);
+  t.status = STA_CYCLE[(idx + 1) % STA_CYCLE.length];
+  save(); render();
+}
+
+function deleteTask(id) {
+  if (!confirm('このタスクを削除しますか？')) return;
+  tasks = tasks.filter(t => t.id !== id);
+  save(); render();
+}
+
+// ===== モーダル =====
+function openModal() {
+  editingId = null;
+  document.getElementById('modal-title').textContent = '📝 タスクを追加';
+  document.getElementById('modal-save-btn').textContent = '追加する';
+  document.getElementById('f-content').value = '';
+  document.getElementById('f-date').value    = '';
+  document.getElementById('f-cat').value     = '';
+  document.getElementById('f-pri').value     = '中';
+  document.getElementById('f-note').value    = '';
+  document.getElementById('f-status-row').style.display = 'none';
+  document.getElementById('modal').classList.add('open');
+  setTimeout(() => document.getElementById('f-content').focus(), 50);
+}
+
+function openEditModal(id) {
+  const t = tasks.find(t => t.id === id);
+  if (!t) return;
+  editingId = id;
+  document.getElementById('modal-title').textContent = '✏️ タスクを編集';
+  document.getElementById('modal-save-btn').textContent = '保存する';
+  document.getElementById('f-content').value = t.content  || '';
+  document.getElementById('f-date').value    = t.dueDate  || '';
+  document.getElementById('f-cat').value     = t.category || '';
+  document.getElementById('f-pri').value     = t.priority || '中';
+  document.getElementById('f-note').value    = t.note     || '';
+  document.getElementById('f-status').value  = t.status   || '未着手';
+  document.getElementById('f-status-row').style.display = '';
+  document.getElementById('modal').classList.add('open');
+  setTimeout(() => document.getElementById('f-content').focus(), 50);
+}
+
+function closeModal() { document.getElementById('modal').classList.remove('open'); editingId = null; }
+
+function saveTask() {
+  const content = document.getElementById('f-content').value.trim();
+  if (!content) { alert('内容を入力してください'); return; }
+  if (editingId) {
+    const t = tasks.find(t => t.id === editingId);
+    if (t) {
+      t.content  = content;
+      t.dueDate  = document.getElementById('f-date').value;
+      t.category = document.getElementById('f-cat').value;
+      t.priority = document.getElementById('f-pri').value;
+      t.status   = document.getElementById('f-status').value;
+      t.note     = document.getElementById('f-note').value.trim();
+    }
+  } else {
+    tasks.push({
+      id: uid(),
+      dueDate:  document.getElementById('f-date').value,
+      category: document.getElementById('f-cat').value,
+      content,
+      priority: document.getElementById('f-pri').value,
+      status:   '未着手',
+      note:     document.getElementById('f-note').value.trim(),
+    });
+  }
+  save(); closeModal(); render();
+}
+
+function toggleFilter() {
+  const panel = document.getElementById('filter-panel');
+  panel.classList.toggle('open');
+  const btn = document.querySelector('.filter-toggle-btn');
+  btn.textContent = panel.classList.contains('open') ? '🔍 絞り込みを閉じる' : '🔍 絞り込み・検索';
+}
+
+function initFilterPanel() {
+  if (window.innerWidth > 768) document.getElementById('filter-panel').classList.add('open');
+}
+
+function updateStats() {
+  const total = tasks.length;
+  const done  = tasks.filter(t => t.status === '完了').length;
+  const doing = tasks.filter(t => t.status === '進行中').length;
+  const todo  = tasks.filter(t => t.status === '未着手').length;
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-done').textContent  = done;
+  document.getElementById('stat-doing').textContent = doing;
+  document.getElementById('stat-todo').textContent  = todo;
+  document.getElementById('progress').style.width   = (total ? Math.round(done/total*100) : 0) + '%';
+}
+
+function updateSortHeaders() {
+  document.querySelectorAll('thead th[data-sort]').forEach(th => {
+    th.classList.remove('sort-asc','sort-desc');
+    if (th.dataset.sort === sortCol) th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+  });
+}
+
+document.querySelectorAll('thead th[data-sort]').forEach(th => {
+  th.addEventListener('click', () => {
+    if (sortCol === th.dataset.sort) sortDir *= -1;
+    else { sortCol = th.dataset.sort; sortDir = 1; }
+    render();
+  });
+});
+
+document.getElementById('modal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+  if (e.key === 'Enter' && e.ctrlKey && document.getElementById('modal').classList.contains('open')) saveTask();
+});
+
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 768) document.getElementById('filter-panel').classList.add('open');
+});
+
+function exportCSV() {
+  const rows = [['No.','期日','カテゴリ','内容','優先度','ステータス','備考']];
+  tasks.forEach((t,i) => rows.push([i+1, t.dueDate, t.category, t.content, t.priority, t.status, t.note]));
+  const csv = rows.map(r => r.map(c => `"${(c||'').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'}));
+  a.download = 'タスク管理_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+load().then(() => {
+  initFilterPanel();
+  render();
+  // file://で開いた場合は移行バナーを表示
+  if (!SERVER_MODE && tasks.length > 0) {
+    const banner = document.getElementById('migrate-banner');
+    if (banner) banner.style.display = 'flex';
+  }
+});
+
+async function migrateToServer() {
+  try {
+    await saveToFirebase();
+    alert('移行完了！' + tasks.length + '件のタスクをFirebaseに保存しました。');
+    document.getElementById('migrate-banner').style.display = 'none';
+  } catch {
+    alert('移行失敗。インターネット接続を確認してください。');
+  }
+}
+</script>
+</body>
+</html>
