@@ -569,6 +569,11 @@ function getFiltered() {
   });
 
   filtered.sort((a, b) => {
+    // 完了は常に最下部
+    const aDone = a.status === '完了' ? 1 : 0;
+    const bDone = b.status === '完了' ? 1 : 0;
+    if (aDone !== bDone) return aDone - bDone;
+    // 同じグループ内は指定ソート列で並べる
     let va = a[sortCol] || '', vb = b[sortCol] || '';
     if (va < vb) return -sortDir;
     if (va > vb) return  sortDir;
