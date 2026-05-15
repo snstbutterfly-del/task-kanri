@@ -66,7 +66,7 @@
     overflow: hidden; table-layout: fixed;
   }
   colgroup col:nth-child(1) { width: 44px; }
-  colgroup col:nth-child(2) { width: 100px; }
+  colgroup col:nth-child(2) { width: 138px; }
   colgroup col:nth-child(3) { width: 90px; }
   colgroup col:nth-child(4) { width: auto; }
   colgroup col:nth-child(5) { width: 62px; }
@@ -158,20 +158,36 @@
   .status-doing { background: #fef3c7; color: #78350f; }
   .status-done  { background: #d1fae5; color: #065f46; }
 
+  /* ===== 優先度行カラー ===== */
+  tr.row-high { background: linear-gradient(90deg, #fff1f1 0%, #fff8f8 100%); border-left: 3px solid #f87171; }
+  tr.row-mid  { background: linear-gradient(90deg, #fffbeb 0%, #fffef5 100%); border-left: 3px solid #fbbf24; }
+  tr.row-low  { background: #fafafa; border-left: 3px solid #d1d5db; }
+  tr.row-high:not(.done-row):hover { background: linear-gradient(90deg, #fee2e2 0%, #fff1f1 100%); }
+  tr.row-mid:not(.done-row):hover  { background: linear-gradient(90deg, #fef3c7 0%, #fffbeb 100%); }
+
   /* ===== 完了行 ===== */
   tr.done-row {
-    background: linear-gradient(90deg, #f0fdf4 0%, #f8fffe 100%);
-    border-left: 4px solid #22c55e;
+    background: #f4f4f4 !important;
+    border-left: 3px solid #d1d5db !important;
+    opacity: 0.55;
   }
-  tr.done-row td { color: #9ca3af; }
+  tr.done-row:hover { opacity: 0.7; }
+  tr.done-row td { color: #b0b0b0; }
   tr.done-row td input,
-  tr.done-row td textarea { text-decoration: line-through; color: #9ca3af; }
-  tr.done-row .done-content { text-decoration: line-through; color: #9ca3af; }
-  tr.done-row .date-display { opacity: 0.5; }
+  tr.done-row td textarea { text-decoration: line-through; color: #b0b0b0; }
+  tr.done-row .done-content { text-decoration: line-through; color: #b0b0b0; }
+  tr.done-row .date-display { opacity: 0.6; }
   tr.done-row .done-check { color: #22c55e; font-size: 16px; margin-right: 4px; }
 
   tr.overdue { }
   .overdue-mark { color: #dc2626; font-size: 11px; display: block; }
+
+  /* ===== 通知バナー ===== */
+  #notif-banner {
+    display: none; background: #eff6ff; border-bottom: 2px solid #3b82f6;
+    padding: 10px 20px; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  #notif-banner.show { display: flex; }
 
   /* ===== PROGRESS ===== */
   .progress-bar { height: 5px; background: #e5e7eb; border-radius: 2px; margin: 0; overflow: hidden; }
@@ -335,6 +351,13 @@
     <label><input type="checkbox" id="hide-done" onchange="render()"> 完了を隠す</label>
     <button class="btn btn-secondary" onclick="exportCSV()">CSV出力</button>
   </div>
+</div>
+
+<!-- 通知バナー -->
+<div id="notif-banner">
+  <span id="notif-text" style="font-size:13px;"></span>
+  <button onclick="requestNotif()" style="background:#3b82f6;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:bold;">🔔 通知を許可する</button>
+  <button onclick="document.getElementById('notif-banner').classList.remove('show')" style="background:none;border:none;color:#888;cursor:pointer;font-size:18px;margin-left:auto;">×</button>
 </div>
 
 <!-- データ移行バナー（file://で開いた時だけ表示） -->
@@ -570,7 +593,11 @@ function render() {
       const priCls  = PRI_CLASS[t.priority] || '';
       const staCls  = STA_CLASS[t.status]   || '';
       const tr = document.createElement('tr');
-      if (isDone) tr.classList.add('done-row');
+      if (isDone) {
+        tr.classList.add('done-row');
+      } else {
+        tr.classList.add(t.priority === '高' ? 'row-high' : t.priority === '低' ? 'row-low' : 'row-mid');
+      }
 
       tr.innerHTML = `
         <td class="cell-no">${isDone ? '✅' : i+1}</td>
@@ -800,10 +827,84 @@ function exportCSV() {
   a.click();
 }
 
+// ===== 通知機能 =====
+async function requestNotif() {
+  if (!('Notification' in window)) { alert('このブラウザは通知に対応していません'); return; }
+  const perm = await Notification.requestPermission();
+  if (perm === 'granted') {
+    document.getElementById('notif-banner').classList.remove('show');
+    checkNotifications(true);
+  }
+}
+
+function checkNotifications(force = false) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  const today = new Date(); today.setHours(0,0,0,0);
+  const tmrw  = new Date(today); tmrw.setDate(tmrw.getDate() + 1);
+  const tmrwStr  = tmrw.toISOString().slice(0,10);
+  const todayStr = today.toISOString().slice(0,10);
+
+  const shownKey = 'notif_shown_' + todayStr;
+  const shown    = JSON.parse(localStorage.getItem(shownKey) || '[]');
+
+  const targets = tasks.filter(t =>
+    t.status !== '完了' &&
+    (t.dueDate === tmrwStr || t.dueDate === todayStr) &&
+    !shown.includes(t.id)
+  );
+
+  targets.forEach(t => {
+    const isToday = t.dueDate === todayStr;
+    const n = new Notification('📋 ' + (isToday ? '【今日が期日】' : '【明日が期日】'), {
+      body: t.content + (t.note ? '\n' + t.note : ''),
+      icon: 'https://snstbutterfly-del.github.io/task-kanri/icon.png',
+      tag:  t.id,
+      requireInteraction: true,
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+    shown.push(t.id);
+  });
+
+  if (targets.length > 0) localStorage.setItem(shownKey, JSON.stringify(shown));
+}
+
+function initNotifications() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'granted') {
+    checkNotifications();
+    // 毎時チェック
+    setInterval(() => checkNotifications(), 60 * 60 * 1000);
+    // 日付変わり目チェック（翌日0時）
+    const now = new Date();
+    const msToMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1) - now;
+    setTimeout(() => {
+      checkNotifications();
+      setInterval(() => checkNotifications(), 24 * 60 * 60 * 1000);
+    }, msToMidnight + 5000);
+  } else if (Notification.permission === 'default') {
+    // 初回は翌日期日タスクがあれば許可バナーを出す
+    const today = new Date(); today.setHours(0,0,0,0);
+    const tmrw = new Date(today); tmrw.setDate(tmrw.getDate() + 1);
+    const tmrwStr = tmrw.toISOString().slice(0,10);
+    const pending = tasks.filter(t => t.status !== '完了' && t.dueDate <= tmrwStr && t.dueDate >= today.toISOString().slice(0,10));
+    if (pending.length > 0) {
+      const banner = document.getElementById('notif-banner');
+      document.getElementById('notif-text').textContent = `⚠️ 今日・明日が期日のタスクが ${pending.length} 件あります。通知を許可すると前日にお知らせします。`;
+      banner.classList.add('show');
+    }
+  }
+}
+
+// Service Worker 登録（GitHub Pages用）
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
 load().then(() => {
   initFilterPanel();
   render();
-  // file://で開いた場合は移行バナーを表示
+  initNotifications();
   if (!SERVER_MODE && tasks.length > 0) {
     const banner = document.getElementById('migrate-banner');
     if (banner) banner.style.display = 'flex';
